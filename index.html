@@ -1,0 +1,277 @@
+<style>
+    body {
+        margin: 0;
+    }
+</style>
+
+<canvas></canvas>
+
+<script>
+    const canvas = document.querySelector('canvas');
+    const ctx = canvas.getContext('2d');
+
+    canvas.width = 512
+    canvas.height = 360
+
+    class Mago {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.width = 25;
+            this.height = 50;
+            this.velocity = 5
+        }
+
+        draw() {
+            ctx.fillStyle = 'white'
+            ctx.fillRect(this.x, this.y, this.width, this.height)
+        }
+
+        update() {
+            this.draw();
+
+            if (actions.left && this.x - this.velocity > 0)
+                this.x -= this.velocity
+            else if (actions.right && this.x + this.width + this.velocity < canvas.width)
+                this.x += this.velocity
+        }
+    }
+
+    class Particle {
+        constructor(x, y, angle, radius, velocity, color) {
+            this.x = x;
+            this.y = y;
+            this.radius = radius;
+            this.velocity = velocity;
+            this.direcao = {
+                x: Math.cos(angle) * this.velocity,
+                y: Math.sin(angle) * this.velocity
+            }
+            this.color = color;
+        }
+
+        draw() {
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2)
+            ctx.fill()
+        }
+
+        update() {
+            this.draw();
+            this.x += this.direcao.x;
+            this.y += this.direcao.y;
+        }
+    }
+
+    class Shot extends Particle {
+        constructor(x, y, target) {
+            const yDistancia = target.y - y;
+            const xDistancia = target.x - x;
+            const angulo = Math.atan2(yDistancia, xDistancia);
+
+            super(x, y, angulo, 5, 5, 'rgba(255,0,0,0.5)')
+
+            this.force = 5;
+        }
+
+        collision(enemy) {
+            if (
+                (
+                    this.x >= enemy.x &&
+                    this.x <= enemy.x + enemy.width &&
+                    this.y + this.radius >= enemy.y &&
+                    this.y - this.radius <= enemy.y + enemy.height
+                ) ||
+                (
+                    this.x + this.radius >= enemy.x &&
+                    this.x - this.radius <= enemy.x + enemy.width &&
+                    this.y >= enemy.y &&
+                    this.y <= enemy.y + enemy.height
+                )
+            )
+                return true
+
+            return false;
+        }
+    }
+
+    class Enemy {
+        constructor(x, y, direction, velocity, color) {
+            this.x = x;
+            this.y = y;
+            this.width = 25;
+            this.height = 50;
+            this.velocity = velocity;
+            this.direction = direction;
+            this.color = color;
+            this.life = 10;
+            this.particlesExplosion = 2000
+        }
+
+        draw() {
+            ctx.fillStyle = this.color
+            ctx.fillRect(this.x, this.y, this.width, this.height)
+        }
+
+        update() {
+            this.draw();
+
+            if (this.direction == 'left')
+                this.x -= this.velocity
+            else
+                this.x += this.velocity
+
+            if (this.x < 50)
+                this.direction = 'right'
+            else if (this.x > canvas.width - 50)
+                this.direction = 'left'
+        }
+
+        die(index) {
+            const parts = [];
+            const partAngle = 360 / this.particlesExplosion;
+            for (let i = 0; i < this.particlesExplosion; i++)
+                parts.push(new PartEnemy(this.x, this.y, i * partAngle))
+
+            inimigos.splice(index, 1)
+            particles.push(...parts);
+        }
+    }
+
+    class PartEnemy extends Particle {
+        constructor(x, y, angle) {
+            const r = Math.random() * 255;
+            const g = Math.random() * 255;
+            const b = Math.random() * 255;
+
+            const radius = Math.random() * 5;
+            const velocity = Math.random() * 5;
+
+            super(x, y, angle, radius, velocity, `rgba(${r},${g},${b},1)`);
+
+            this.time = 0;
+            this.maxTime = 100;
+
+            this.r = r;
+            this.g = g;
+            this.b = b;
+            this.opacity = 1;
+        }
+
+        update() {
+            super.update();
+
+            if (this.time % 10 == 0) {
+                this.opacity -= 0.1;
+                this.color = `rgba(${this.r},${this.g},${this.b},${this.opacity})`
+            }
+
+            this.time++;
+        }
+    }
+
+    const mouse = {
+        x: 0,
+        y: 0
+    }
+    const actions = {
+        left: false,
+        right: false,
+        jump: false
+    }
+
+    const mago = new Mago(canvas.width / 2, canvas.height - 50)
+    const tiros = [];
+    const inimigos = [
+        new Enemy(canvas.width / 2, 15, 'left', 2, 'blue'),
+        new Enemy(canvas.width / 2, 25, 'left', 3, 'purple'),
+        new Enemy(canvas.width / 2, 20, 'right', 1, 'green'),
+        new Enemy(canvas.width / 2, 25, 'right', 5, 'yellow')
+    ]
+    const particles = [];
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        for (let i = tiros.length - 1; i >= 0; i--) {
+            const tiro = tiros[i];
+            tiro.update();
+            if (tiro.x < 0 || tiro.y < 0)
+                tiros.splice(i, 1)
+        }
+
+        for (let i = inimigos.length - 1; i >= 0; i--) {
+            const inimigo = inimigos[i];
+
+            inimigo.update();
+
+            tiros.forEach((shot, indexShot) => {
+                if (shot.collision(inimigo)) {
+                    tiros.splice(indexShot, 1);
+                    inimigo.life -= shot.force;
+                    if (inimigo.life <= 0)
+                        inimigo.die(i);
+                }
+            })
+        }
+
+
+        mago.update()
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const particle = particles[i];
+            particle.update();
+            if (particle.x < 0 || particle.y < 0 || particle.time >= particle.maxTime)
+                particles.splice(i, 1)
+        }
+    }
+
+    animate();
+
+    canvas.addEventListener('click', () => {
+        tiros.push(new Shot(mago.x + mago.width / 2, mago.y, mouse))
+    })
+
+    addEventListener('mousemove', (e) => {
+        mouse.x = e.clientX;
+        mouse.y = e.clientY;
+    })
+
+    addEventListener('keydown', (e) => {
+        switch (e.code) {
+            case 'ArrowLeft':
+            case 'KeyD':
+                actions.left = true;
+                break;
+            case 'ArrowRight':
+            case 'KeyA':
+                actions.right = true;
+                break;
+            case 'ArrowUp':
+            case 'KeyW':
+                actions.jump = true;
+                break;
+        }
+    })
+    addEventListener('keyup', (e) => {
+        switch (e.code) {
+            case 'ArrowLeft':
+            case 'KeyD':
+                actions.left = false;
+                break;
+            case 'ArrowRight':
+            case 'KeyA':
+                actions.right = false;
+                break;
+            case 'ArrowUp':
+            case 'KeyW':
+                actions.jump = false;
+                break;
+        }
+    })
+
+</script>
